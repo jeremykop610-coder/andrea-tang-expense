@@ -1,0 +1,417 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Maison Expense</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <section class="login-screen" id="loginScreen">
+      <div class="login-card">
+        <div class="brand login-brand">
+          <div>
+            <img class="brand-logo" src="assets/andrea-tang-logo.png" alt="Andrea Tang" />
+          </div>
+        </div>
+        <form id="loginForm" class="login-form">
+          <label>
+            部门
+            <select id="loginDepartment" required></select>
+          </label>
+          <label>
+            姓名
+            <select id="loginName" required></select>
+          </label>
+          <label id="passwordField" hidden>
+            财务密码
+            <input id="loginPassword" type="password" placeholder="请输入财务密码" />
+          </label>
+          <button class="button" type="submit">登录</button>
+        </form>
+      </div>
+    </section>
+
+    <div class="app-shell" id="appShell" hidden>
+      <aside class="sidebar">
+        <div class="brand">
+          <div>
+            <img class="brand-logo" src="assets/andrea-tang-logo.png" alt="Andrea Tang" />
+          </div>
+        </div>
+
+        <nav class="nav" aria-label="主导航">
+          <button class="nav-item active" data-view="dashboard" data-roles="employee,finance" type="button">
+            <span class="nav-icon" aria-hidden="true">D</span>
+            工作台
+          </button>
+          <button class="nav-item" data-view="submit" data-roles="employee,finance" type="button">
+            <span class="nav-icon" aria-hidden="true">S</span>
+            提交报销
+          </button>
+          <button class="nav-item" data-view="myClaims" data-roles="employee,finance" type="button">
+            <span class="nav-icon" aria-hidden="true">M</span>
+            我的进度
+          </button>
+          <button class="nav-item" data-view="finance" data-roles="finance" type="button">
+            <span class="nav-icon" aria-hidden="true">R</span>
+            财务审核
+          </button>
+          <button class="nav-item" data-view="payment" data-roles="finance" type="button">
+            <span class="nav-icon" aria-hidden="true">P</span>
+            付款批次
+          </button>
+          <button class="nav-item" data-view="ledger" data-roles="finance" type="button">
+            <span class="nav-icon" aria-hidden="true">L</span>
+            全量台账
+          </button>
+          <button class="nav-item" data-view="people" data-roles="finance" type="button">
+            <span class="nav-icon" aria-hidden="true">U</span>
+            人员管理
+          </button>
+        </nav>
+
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow" id="roleEyebrow">Finance desk</p>
+            <h1 id="pageTitle">工作台</h1>
+          </div>
+          <div class="topbar-actions">
+            <div class="current-user" id="currentUserLabel"></div>
+            <button class="button secondary" id="logoutButton" type="button">退出登录</button>
+          </div>
+        </header>
+
+        <section class="view active" id="dashboardView">
+          <div class="metrics" id="metrics"></div>
+          <div class="split-layout">
+            <section class="surface">
+              <div class="section-header">
+                <div>
+                  <h2 id="priorityTitle">待处理</h2>
+                  <p id="priorityHelp">优先处理带异常标签的报销单。</p>
+                </div>
+                <button class="button" id="primaryActionButton" type="button">进入审核</button>
+              </div>
+              <div class="compact-list" id="priorityList"></div>
+            </section>
+            <section class="surface">
+              <div class="section-header">
+                <div>
+                  <h2 id="secondaryTitle">费用分布</h2>
+                  <p id="secondaryHelp">按费用类型汇总，便于月底复盘。</p>
+                </div>
+              </div>
+              <div class="category-bars" id="categoryBars"></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="submitView">
+          <form class="surface form-grid" id="expenseForm">
+            <div class="section-header full">
+              <div>
+                <h2>新建报销单</h2>
+                <p>报销人自动锁定为当前员工，收款银行卡来自员工档案。</p>
+              </div>
+              <button class="button" id="submitButton" type="submit">提交</button>
+            </div>
+
+            <div class="profile-strip full" id="employeeProfile"></div>
+
+            <label class="full">
+              报销说明
+              <textarea name="summary" rows="3" placeholder="补充本次报销背景，方便财务快速判断"></textarea>
+            </label>
+
+            <div class="full detail-editor">
+              <div class="detail-header">
+                <h3>费用明细</h3>
+                <button class="button secondary" id="addLineButton" type="button">添加明细</button>
+              </div>
+              <div id="lineItems"></div>
+            </div>
+          </form>
+        </section>
+
+        <section class="view" id="myClaimsView">
+          <div class="surface">
+            <div class="section-header">
+              <div>
+                <h2>我的报销进度</h2>
+                <p>查看本人报销状态、财务备注和付款进度。</p>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>单号</th>
+                    <th>报销金额</th>
+                    <th>发票金额</th>
+                    <th>状态</th>
+                    <th>异常</th>
+                    <th>财务备注</th>
+                    <th>付款时间</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="myClaimRows"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section class="view" id="financeView">
+          <div class="surface">
+            <div class="section-header">
+              <div>
+                <h2>财务审核</h2>
+                <p>无主管审批模式：员工提交后直接进入这里。</p>
+              </div>
+              <div class="filters">
+                <select id="financeStatusFilter">
+                  <option value="all">全部状态</option>
+                  <option value="待财务审核">待财务审核</option>
+                  <option value="待付款">待付款</option>
+                  <option value="已付款">已付款</option>
+                  <option value="已驳回">已驳回</option>
+                </select>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>单号</th>
+                    <th>报销人</th>
+                    <th>部门</th>
+                    <th>报销金额</th>
+                    <th>发票金额</th>
+                    <th>状态</th>
+                    <th>异常</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="financeRows"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section class="view" id="paymentView">
+          <div class="surface">
+            <div class="section-header">
+              <div>
+                <h2>付款批次</h2>
+                <p>仅导出银行卡付款清单，不直连银行。</p>
+              </div>
+              <div class="button-group">
+                <button class="button secondary" id="markPaidButton" type="button">批量标记已付款</button>
+                <button class="button" id="exportButton" type="button">导出付款清单</button>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th><input id="selectAllPayables" type="checkbox" /></th>
+                    <th>单号</th>
+                    <th>收款人</th>
+                    <th>开户行</th>
+                    <th>银行卡</th>
+                    <th>金额</th>
+                    <th>导出批次</th>
+                    <th>备注</th>
+                  </tr>
+                </thead>
+                <tbody id="paymentRows"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section class="view" id="ledgerView">
+          <div class="surface">
+            <div class="section-header">
+              <div>
+                <h2>全量台账</h2>
+                <p>按员工、部门、费用类型、状态、月份筛选。</p>
+              </div>
+              <div class="filters ledger-filters">
+                <input id="ledgerSearch" placeholder="搜索员工、部门、用途" />
+                <input id="ledgerMonth" type="month" />
+                <select id="ledgerTypeFilter">
+                  <option value="all">全部类型</option>
+                </select>
+                <select id="ledgerStatusFilter">
+                  <option value="all">全部状态</option>
+                  <option value="待财务审核">待财务审核</option>
+                  <option value="待付款">待付款</option>
+                  <option value="已付款">已付款</option>
+                  <option value="已驳回">已驳回</option>
+                </select>
+                <button class="button secondary" id="exportLedgerButton" type="button">导出台账</button>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>提交时间</th>
+                    <th>单号</th>
+                    <th>报销人</th>
+                    <th>部门</th>
+                    <th>费用类型</th>
+                    <th>金额</th>
+                    <th>状态</th>
+                    <th>付款时间</th>
+                  </tr>
+                </thead>
+                <tbody id="ledgerRows"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section class="view" id="peopleView">
+          <div class="surface">
+            <div class="section-header">
+              <div>
+                <h2>人员管理</h2>
+                <p>导入全员名单，维护角色、部门和银行卡信息。</p>
+              </div>
+              <div class="button-group">
+                <label class="file-button">
+                  选择 Excel
+                  <input id="staffFile" accept=".xlsx,.xls" type="file" />
+                </label>
+                <button class="button" id="confirmImportButton" type="button" disabled>确认导入</button>
+              </div>
+            </div>
+            <form class="manual-person-form" id="manualPersonForm">
+              <label>
+                姓名
+                <input name="name" required placeholder="员工姓名" />
+              </label>
+              <label>
+                部门
+                <input name="department" required placeholder="所属部门" />
+              </label>
+              <label>
+                角色
+                <select name="role">
+                  <option value="employee">员工</option>
+                  <option value="finance">财务</option>
+                </select>
+              </label>
+              <label>
+                开户行
+                <input name="bank_name" required placeholder="开户行" />
+              </label>
+              <label>
+                银行卡号
+                <input name="bank_account" required inputmode="numeric" placeholder="银行卡号" />
+              </label>
+              <label>
+                联系方式
+                <input name="contact" placeholder="手机号或邮箱" />
+              </label>
+              <button class="button" type="submit">添加人员</button>
+            </form>
+            <div class="import-errors" id="importErrors"></div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>姓名</th>
+                    <th>部门</th>
+                    <th>角色</th>
+                    <th>开户行</th>
+                    <th>银行卡</th>
+                    <th>联系方式</th>
+                    <th>状态</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="peopleRows"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <dialog id="reviewDialog">
+      <form method="dialog" class="review-panel">
+        <div class="dialog-head">
+          <div>
+            <p class="eyebrow">Review</p>
+            <h2 id="dialogTitle">审核报销单</h2>
+          </div>
+          <button class="icon-button" value="cancel" type="submit" aria-label="关闭">×</button>
+        </div>
+        <div id="dialogBody"></div>
+        <label>
+          审核备注
+          <textarea id="reviewNote" rows="3" placeholder="驳回时请说明原因；通过审核可选填"></textarea>
+        </label>
+        <div class="dialog-actions">
+          <button class="button danger" id="rejectButton" value="cancel" type="button">驳回</button>
+          <button class="button" id="approveButton" value="cancel" type="button">通过审核</button>
+        </div>
+      </form>
+    </dialog>
+
+    <template id="lineTemplate">
+      <div class="line-item">
+        <div class="line-top">
+          <label>
+            日期
+            <input class="line-date" type="date" required />
+          </label>
+          <label>
+            费用类型
+            <select class="line-type"></select>
+          </label>
+          <label>
+            报销金额
+            <input class="line-amount" type="number" step="0.01" min="0" required placeholder="0.00" />
+          </label>
+          <label>
+            票据类型
+            <select class="line-receipt">
+              <option value="数电发票">数电发票</option>
+              <option value="纸质发票">纸质发票</option>
+              <option value="截图">截图</option>
+              <option value="收据">收据</option>
+              <option value="无票据">无票据</option>
+            </select>
+          </label>
+        </div>
+        <div class="line-bottom">
+          <label>
+            用途
+            <input class="line-purpose" required placeholder="填写用途" />
+          </label>
+          <label class="invoice-upload">
+            上传原件
+            <input class="line-attachment" type="file" accept="application/pdf,.pdf,image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" required />
+            <span class="invoice-status"></span>
+          </label>
+          <label class="no-receipt-field" hidden>
+            无票据说明
+            <input class="line-no-receipt-note" placeholder="说明无法提供票据的原因" />
+          </label>
+        </div>
+        <button class="icon-button remove-line" type="button" aria-label="删除明细">×</button>
+      </div>
+    </template>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="app.js"></script>
+  </body>
+</html>
