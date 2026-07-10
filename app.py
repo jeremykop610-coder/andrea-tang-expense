@@ -13,6 +13,7 @@ from typing import Any
 from flask import Flask, Response, jsonify, request, send_from_directory, session
 from openpyxl import load_workbook
 from pypdf import PdfReader
+from werkzeug.exceptions import HTTPException
 from werkzeug.utils import secure_filename
 
 
@@ -544,6 +545,17 @@ def handle_permission(error: PermissionError) -> tuple[Response, int]:
 @app.errorhandler(ValueError)
 def handle_value(error: ValueError) -> tuple[Response, int]:
     return jsonify({"error": str(error)}), 400
+
+
+@app.errorhandler(HTTPException)
+def handle_http(error: HTTPException) -> tuple[Response, int]:
+    return jsonify({"error": error.description or error.name}), error.code or 500
+
+
+@app.errorhandler(Exception)
+def handle_unexpected(error: Exception) -> tuple[Response, int]:
+    app.logger.exception("Unhandled request error")
+    return jsonify({"error": "服务器处理失败，请稍后重试或联系财务"}), 500
 
 
 @app.route("/")

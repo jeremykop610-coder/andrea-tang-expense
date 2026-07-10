@@ -118,18 +118,31 @@ function apiHeaders(extra = {}) {
   return { ...extra };
 }
 
+function responseErrorMessage(payload, status) {
+  if (payload && typeof payload === "object") {
+    return payload.error || payload.errors?.join("；") || `请求失败（${status}）`;
+  }
+  const text = String(payload || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  return text ? `${text.slice(0, 80)}（${status}）` : `请求失败（${status}）`;
+}
+
 async function apiJson(path, options = {}) {
-  const response = await fetch(path, {
-    ...options,
-    credentials: "same-origin",
-    headers: {
-      ...apiHeaders(options.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
-      ...(options.headers || {}),
-    },
-  });
+  let response;
+  try {
+    response = await fetch(path, {
+      ...options,
+      credentials: "same-origin",
+      headers: {
+        ...apiHeaders(options.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
+        ...(options.headers || {}),
+      },
+    });
+  } catch {
+    throw new Error("网络请求失败，请确认系统服务已启动后刷新页面");
+  }
   const contentType = response.headers.get("content-type") || "";
   const payload = contentType.includes("application/json") ? await response.json() : await response.text();
-  if (!response.ok) throw new Error(payload?.error || payload?.errors?.join("；") || "请求失败");
+  if (!response.ok) throw new Error(responseErrorMessage(payload, response.status));
   return payload;
 }
 
