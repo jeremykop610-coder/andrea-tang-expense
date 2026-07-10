@@ -527,7 +527,7 @@ async function inspectLineInvoice(node) {
   form.append("file", file);
   form.append("receipt_type", receiptType);
   const status = node.querySelector(".invoice-status");
-  status.textContent = receiptType === "数电发票" ? "正在识别含税金额..." : "正在上传原件...";
+  status.textContent = receiptType === "数电发票" ? "正在识别含税金额..." : "正在上传发票原件...";
   const data = await apiJson("/api/invoices/inspect", { method: "POST", body: form });
   node.dataset.invoiceAmount = data.invoice_amount ?? "";
   node.dataset.attachmentName = data.attachment_name;
@@ -816,7 +816,7 @@ function renderPeopleRows(rows = state.users, preview = false) {
 
 function renderAttachmentPreview(line) {
   if (!line) {
-    return `<div class="attachment-preview empty-preview">选择一条有附件的明细后预览原件。</div>`;
+    return `<div class="attachment-preview empty-preview">选择一条有发票原件的明细后预览。</div>`;
   }
   const name = escapeHtml(line.attachment_name || "附件");
   if (fileKind(line.attachment_name) === "image") {
@@ -849,7 +849,7 @@ function openClaimDetail(id) {
         <div class="table-wrap review-lines">
           <table>
             <thead>
-              <tr><th>#</th><th>日期/类型</th><th>用途</th><th>报销金额</th><th>发票金额</th><th>差额</th><th>原件</th></tr>
+              <tr><th>#</th><th>日期/类型</th><th>用途</th><th>报销金额</th><th>发票金额</th><th>差额</th><th>发票原件</th></tr>
             </thead>
             <tbody>
               ${claim.lines
@@ -865,7 +865,7 @@ function openClaimDetail(id) {
                       <td>${diff == null ? "-" : formatMoney(diff)}</td>
                       <td>${
                         line.attachment_url
-                          ? `<button class="link-button" data-detail-attachment="${index}" type="button">${escapeHtml(line.attachment_name || "打开原件")}</button>`
+                          ? `<button class="link-button" data-detail-attachment="${index}" type="button">${escapeHtml(line.attachment_name || "打开发票原件")}</button>`
                           : "-"
                       }</td>
                     </tr>
@@ -878,7 +878,7 @@ function openClaimDetail(id) {
       </div>
       <aside class="review-right">
         <div class="preview-head">
-          <strong>原件预览</strong>
+          <strong>发票原件预览</strong>
           <span>${previewLine ? escapeHtml(previewLine.attachment_name) : "暂无附件"}</span>
         </div>
         <div>${renderAttachmentPreview(previewLine)}</div>
@@ -919,7 +919,7 @@ function openReview(id) {
         <div class="table-wrap review-lines">
           <table>
             <thead>
-              <tr><th>#</th><th>日期/类型</th><th>用途</th><th>报销金额</th><th>发票金额</th><th>差额</th><th>异常</th><th>原件</th></tr>
+              <tr><th>#</th><th>日期/类型</th><th>用途</th><th>报销金额</th><th>发票金额</th><th>差额</th><th>异常</th><th>发票原件</th></tr>
             </thead>
             <tbody>
               ${claim.lines
@@ -936,7 +936,7 @@ function openReview(id) {
                       <td>${line.issues?.length ? renderTags(line.issues) : "无"}</td>
                       <td>${
                         line.attachment_url
-                          ? `<button class="link-button" data-open-attachment="${index}" type="button">${escapeHtml(line.attachment_name || "打开原件")}</button>`
+                          ? `<button class="link-button" data-open-attachment="${index}" type="button">${escapeHtml(line.attachment_name || "打开发票原件")}</button>`
                           : "-"
                       }</td>
                     </tr>
@@ -949,7 +949,7 @@ function openReview(id) {
       </div>
       <aside class="review-right">
         <div class="preview-head">
-          <strong>原件预览</strong>
+          <strong>发票原件预览</strong>
           <span>${previewLine ? escapeHtml(previewLine.attachment_name) : "暂无附件"}</span>
         </div>
         <div id="attachmentPreview">${renderAttachmentPreview(previewLine)}</div>

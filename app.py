@@ -122,8 +122,68 @@ def validate_upload(file: Any, receipt_type: str) -> str:
     return filename
 
 
+def parse_invoice_qr_amount(value: str) -> float | None:
+    parts = [part.strip() for part in value.split(",")]
+    if len(parts) < 5 or parts[0] != "01":
+        return None
+    amount = parts[4]
+    if not re.fullmatch(r"[0-9][0-9,]*\.?[0-9]{0,2}", amount):
+        return None
+    return round(float(amount.replace(",", "")), 2)
+
+
+def decode_qr_amount_from_image_bytes(data: bytes) -> float | None:
+    os.environ.setdefault("OPENCV_LOG_LEVEL", "SILENT")
+    try:
+        import cv2
+        import numpy as np
+    except ImportError:
+        return None
+
+    if hasattr(cv2, "setLogLevel"):
+        cv2.setLogLevel(0)
+
+    image = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
+    if image is None:
+        return None
+
+    detector = cv2.QRCodeDetector()
+    height, width = image.shape[:2]
+    crops = [
+        image[: max(1, int(height * 0.35)), : max(1, int(width * 0.35))],
+        image,
+    ]
+
+    for candidate in crops:
+        text, _, _ = detector.detectAndDecode(candidate)
+        amount = parse_invoice_qr_amount(text or "")
+        if amount is not None:
+            return amount
+        if hasattr(detector, "detectAndDecodeMulti"):
+            ok, decoded, _, _ = detector.detectAndDecodeMulti(candidate)
+            if ok:
+                for item in decoded:
+                    amount = parse_invoice_qr_amount(item or "")
+                    if amount is not None:
+                        return amount
+    return None
+
+
+def extract_pdf_qr_amount(reader: PdfReader) -> float | None:
+    for page in reader.pages:
+        for image in getattr(page, "images", []):
+            amount = decode_qr_amount_from_image_bytes(image.data)
+            if amount is not None:
+                return amount
+    return None
+
+
 def extract_pdf_amount(path: Path) -> float | None:
     reader = PdfReader(str(path))
+    qr_amount = extract_pdf_qr_amount(reader)
+    if qr_amount is not None:
+        return qr_amount
+
     text = "\n".join(page.extract_text() or "" for page in reader.pages)
     if not text.strip():
         return None
