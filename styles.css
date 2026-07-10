@@ -845,6 +845,11 @@ dialog::backdrop {
   background: #f7efe2;
 }
 
+.highlight-row td {
+  background: #fff4d7;
+  transition: background 0.25s ease;
+}
+
 .link-button {
   padding: 0;
   color: var(--blue);

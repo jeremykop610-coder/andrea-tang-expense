@@ -11,6 +11,8 @@ const state = {
   importSummary: null,
   editingClaimId: null,
   previewLineIndex: 0,
+  isSubmitting: false,
+  highlightClaimId: null,
 };
 
 const els = {
@@ -62,6 +64,9 @@ const els = {
   reviewDialog: document.querySelector("#reviewDialog"),
   dialogTitle: document.querySelector("#dialogTitle"),
   dialogBody: document.querySelector("#dialogBody"),
+  claimDetailDialog: document.querySelector("#claimDetailDialog"),
+  claimDetailTitle: document.querySelector("#claimDetailTitle"),
+  claimDetailBody: document.querySelector("#claimDetailBody"),
   reviewNote: document.querySelector("#reviewNote"),
   approveButton: document.querySelector("#approveButton"),
   rejectButton: document.querySelector("#rejectButton"),
@@ -296,12 +301,14 @@ function renderMetrics() {
   }
 
   const claims = ownClaims();
+  const pendingReview = claims.filter((claim) => claim.status === "待财务审核").length;
+  const payable = claims.filter((claim) => claim.status === "待付款").length;
   const rejected = claims.filter((claim) => claim.status === "已驳回").length;
-  const inProgress = claims.filter((claim) => ["待财务审核", "待付款"].includes(claim.status)).length;
   const paid = claims.filter((claim) => claim.status === "已付款").length;
   paintMetrics([
-    ["已驳回", rejected, "可继续编辑或删除", "#74312f"],
-    ["我的处理中", inProgress, "待审核或待付款", "#245548"],
+    ["待财务审核", pendingReview, "已提交，等待财务处理", "#b08a45"],
+    ["待付款", payable, "财务已通过，等待付款", "#245548"],
+    ["已驳回", rejected, "可修改后重新提交", "#74312f"],
     ["已付款", paid, "财务已完成付款标记", "#315d86"],
   ]);
 }
@@ -323,18 +330,18 @@ function paintMetrics(metrics) {
 function renderPriorityList() {
   const isFinance = state.currentUser.role === "finance";
   const claims = isFinance ? state.claims : ownClaims();
-  els.priorityTitle.textContent = isFinance ? "待处理" : "被驳回的报销";
-  els.priorityHelp.textContent = isFinance ? "优先处理带异常标签的报销单。" : "可继续编辑后重新提交，或直接删除。";
+  els.priorityTitle.textContent = isFinance ? "待处理" : "最近报销进度";
+  els.priorityHelp.textContent = isFinance ? "优先处理带异常标签的报销单。" : "查看最近提交、审核和付款状态。";
   els.primaryActionButton.textContent = isFinance ? "进入审核" : "提交报销";
   els.primaryActionButton.onclick = () => setView(isFinance ? "finance" : "submit");
 
   const records = claims
-    .filter((claim) => (isFinance ? claim.status === "待财务审核" : claim.status === "已驳回"))
-    .sort((a, b) => b.issues.length - a.issues.length)
+    .filter((claim) => (isFinance ? claim.status === "待财务审核" : true))
+    .sort((a, b) => (isFinance ? b.issues.length - a.issues.length : new Date(b.created_at) - new Date(a.created_at)))
     .slice(0, 5);
 
   if (!records.length) {
-    els.priorityList.innerHTML = `<div class="empty">${isFinance ? "暂无待处理报销单。" : "暂无被驳回的报销。"}</div>`;
+    els.priorityList.innerHTML = `<div class="empty">${isFinance ? "暂无待处理报销单。" : "暂无报销记录。"}</div>`;
     return;
   }
 
@@ -343,7 +350,7 @@ function renderPriorityList() {
       (claim) => `
         <div class="compact-card">
           <div>
-            <div class="compact-title">${escapeHtml(claim.employee.name)} · ${escapeHtml(claim.employee.department)}</div>
+            <div class="compact-title">${isFinance ? `${escapeHtml(claim.employee.name)} · ${escapeHtml(claim.employee.department)}` : `${escapeHtml(claim.id)} · ${escapeHtml(claim.status)}`}</div>
             <div class="compact-meta">${claim.id} / ${formatDate(claim.created_at)} / ${claim.status}</div>
             <div class="compact-meta">${claim.issues.length ? renderTags(claim.issues) : escapeHtml(claim.review_note || "无异常")}</div>
           </div>
@@ -405,8 +412,8 @@ function renderCategoryBars() {
 
 function renderEmployeeProfile() {
   const missingBank = !state.currentUser.bank_masked || !state.currentUser.bank_name;
-  els.submitButton.disabled = missingBank;
-  els.submitButton.textContent = state.editingClaimId ? "重新提交" : "提交";
+  els.submitButton.disabled = missingBank || state.isSubmitting;
+  els.submitButton.textContent = state.isSubmitting ? "正在提交..." : state.editingClaimId ? "修改后重新提交" : "提交";
   els.employeeProfile.innerHTML = `
     <div>
       <span class="summary-label">报销人</span>
@@ -427,6 +434,12 @@ function renderEmployeeProfile() {
 
 function fillCategorySelect(select) {
   select.innerHTML = state.categories.map((category) => `<option value="${escapeHtml(category)}">${escapeHtml(category)}</option>`).join("");
+}
+
+function uploadHint(receiptType) {
+  if (receiptType === "数电发票") return "仅支持 PDF";
+  if (receiptType === "无票据") return "请填写无票据说明";
+  return "支持 PDF/JPG/PNG/WEBP";
 }
 
 function addLine(defaults = {}) {
@@ -458,7 +471,7 @@ function addLine(defaults = {}) {
     } else if (node.dataset.attachmentName) {
       node.querySelector(".invoice-status").textContent = `已保留：${node.dataset.attachmentName}`;
     } else {
-      node.querySelector(".invoice-status").textContent = "";
+      node.querySelector(".invoice-status").textContent = uploadHint(receiptSelect.value);
     }
   };
   receiptSelect.addEventListener("change", syncAttachmentAccept);
@@ -476,7 +489,7 @@ function addLine(defaults = {}) {
     node.dataset.invoiceAmount = "";
     node.dataset.attachmentName = "";
     node.dataset.attachmentPath = "";
-    status.textContent = file ? file.name : "";
+    status.textContent = file ? file.name : uploadHint(receiptSelect.value);
   });
   node.querySelector(".line-amount").addEventListener("input", () => {
     if (receiptSelect.value === "数电发票" && node.dataset.invoiceAmount !== "") {
@@ -561,7 +574,8 @@ async function readLineItemsWithInvoices() {
 
 async function handleSubmit(event) {
   event.preventDefault();
-  els.submitButton.disabled = true;
+  state.isSubmitting = true;
+  renderEmployeeProfile();
   try {
     const { lines, mismatches } = await readLineItemsWithInvoices();
     if (mismatches.length) {
@@ -583,12 +597,20 @@ async function handleSubmit(event) {
     els.expenseForm.reset();
     els.lineItems.innerHTML = "";
     addLine();
-    showToast(`已提交 ${data.claim.id}`);
+    state.highlightClaimId = data.claim.id;
+    showToast(`已提交 ${data.claim.id}，等待财务审核`);
     await refreshClaims();
     setView("myClaims");
+    window.setTimeout(() => {
+      if (state.highlightClaimId === data.claim.id) {
+        state.highlightClaimId = null;
+        renderMyClaimRows();
+      }
+    }, 3600);
   } catch (error) {
     showToast(error.message);
   } finally {
+    state.isSubmitting = false;
     renderEmployeeProfile();
   }
 }
@@ -605,12 +627,13 @@ function renderMyClaimRows() {
         const actions =
           claim.status === "已驳回"
             ? `<div class="row-actions">
+                  <button class="button secondary compact-button" data-view-claim="${claim.id}" type="button">查看</button>
                   <button class="button secondary compact-button" data-edit-claim="${claim.id}" type="button">继续编辑</button>
                   <button class="button danger compact-button" data-delete-claim="${claim.id}" type="button">删除</button>
                 </div>`
-            : "-";
+            : `<button class="button secondary compact-button" data-view-claim="${claim.id}" type="button">查看</button>`;
         return `
-        <tr>
+        <tr class="${claim.id === state.highlightClaimId ? "highlight-row" : ""}">
           <td><strong>${claim.id}</strong><br><span class="compact-meta">${fullDate(claim.created_at)}</span></td>
           <td class="amount">${formatMoney(claim.total_amount)}</td>
           <td class="amount">${claimInvoiceLabel(claim)}</td>
@@ -624,6 +647,9 @@ function renderMyClaimRows() {
       },
     )
     .join("");
+  els.myClaimRows.querySelectorAll("[data-view-claim]").forEach((button) => {
+    button.addEventListener("click", () => openClaimDetail(button.dataset.viewClaim));
+  });
   els.myClaimRows.querySelectorAll("[data-edit-claim]").forEach((button) => {
     button.addEventListener("click", () => startClaimEdit(button.dataset.editClaim));
   });
@@ -800,6 +826,72 @@ function renderAttachmentPreview(line) {
     return `<div class="attachment-preview"><iframe src="${escapeHtml(line.attachment_url)}" title="${name}"></iframe></div>`;
   }
   return `<div class="attachment-preview empty-preview"><strong>${name}</strong></div>`;
+}
+
+function openClaimDetail(id) {
+  const claim = state.claims.find((item) => item.id === id);
+  if (!claim) return;
+  const previewLine = claim.lines.find((line) => line.attachment_url) || null;
+  els.claimDetailTitle.textContent = `${claim.id} · ${claim.status}`;
+  els.claimDetailBody.innerHTML = `
+    <div class="review-layout">
+      <div class="review-left">
+        <div class="review-summary dense">
+          <div class="summary-cell"><div class="summary-label">报销金额</div><div class="summary-value">${formatMoney(claim.total_amount)}</div></div>
+          <div class="summary-cell"><div class="summary-label">发票金额</div><div class="summary-value">${claimInvoiceLabel(claim)}</div></div>
+          <div class="summary-cell"><div class="summary-label">状态</div><div class="summary-value">${escapeHtml(claim.status)}</div></div>
+          <div class="summary-cell"><div class="summary-label">提交时间</div><div class="summary-value">${fullDate(claim.created_at)}</div></div>
+          <div class="summary-cell"><div class="summary-label">付款时间</div><div class="summary-value">${claim.paid_at ? fullDate(claim.paid_at) : "-"}</div></div>
+          <div class="summary-cell"><div class="summary-label">财务备注</div><div class="summary-value">${escapeHtml(claim.review_note || "-")}</div></div>
+        </div>
+        <p>${escapeHtml(claim.summary || "无额外说明")}</p>
+        <div>${claim.issues.length ? renderTags(claim.issues) : '<span class="tag">无异常</span>'}</div>
+        <div class="table-wrap review-lines">
+          <table>
+            <thead>
+              <tr><th>#</th><th>日期/类型</th><th>用途</th><th>报销金额</th><th>发票金额</th><th>差额</th><th>原件</th></tr>
+            </thead>
+            <tbody>
+              ${claim.lines
+                .map((line, index) => {
+                  const diff = lineDifference(line);
+                  return `
+                    <tr>
+                      <td>${index + 1}</td>
+                      <td>${escapeHtml(line.date)}<br><span class="compact-meta">${escapeHtml(line.category)} · ${escapeHtml(line.receipt_type)}</span></td>
+                      <td>${escapeHtml(line.purpose)}${line.no_receipt_note ? `<br><span class="compact-meta">无票据说明：${escapeHtml(line.no_receipt_note)}</span>` : ""}</td>
+                      <td>${formatMoney(line.amount)}</td>
+                      <td>${lineInvoiceLabel(line)}</td>
+                      <td>${diff == null ? "-" : formatMoney(diff)}</td>
+                      <td>${
+                        line.attachment_url
+                          ? `<button class="link-button" data-detail-attachment="${index}" type="button">${escapeHtml(line.attachment_name || "打开原件")}</button>`
+                          : "-"
+                      }</td>
+                    </tr>
+                  `;
+                })
+                .join("")}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <aside class="review-right">
+        <div class="preview-head">
+          <strong>原件预览</strong>
+          <span>${previewLine ? escapeHtml(previewLine.attachment_name) : "暂无附件"}</span>
+        </div>
+        <div>${renderAttachmentPreview(previewLine)}</div>
+      </aside>
+    </div>
+  `;
+  els.claimDetailBody.querySelectorAll("[data-detail-attachment]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const line = claim.lines[Number(button.dataset.detailAttachment)];
+      if (line?.attachment_url) window.open(line.attachment_url, "_blank", "noopener");
+    });
+  });
+  if (!els.claimDetailDialog.open) els.claimDetailDialog.showModal();
 }
 
 function openReview(id) {
