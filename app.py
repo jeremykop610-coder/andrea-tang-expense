@@ -144,38 +144,44 @@ def decode_qr_amount_from_image_bytes(data: bytes) -> float | None:
     if hasattr(cv2, "setLogLevel"):
         cv2.setLogLevel(0)
 
-    image = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
-    if image is None:
-        return None
+    try:
+        image = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
+        if image is None:
+            return None
 
-    detector = cv2.QRCodeDetector()
-    height, width = image.shape[:2]
-    crops = [
-        image[: max(1, int(height * 0.35)), : max(1, int(width * 0.35))],
-        image,
-    ]
+        detector = cv2.QRCodeDetector()
+        height, width = image.shape[:2]
+        crops = [
+            image[: max(1, int(height * 0.35)), : max(1, int(width * 0.35))],
+            image,
+        ]
 
-    for candidate in crops:
-        text, _, _ = detector.detectAndDecode(candidate)
-        amount = parse_invoice_qr_amount(text or "")
-        if amount is not None:
-            return amount
-        if hasattr(detector, "detectAndDecodeMulti"):
-            ok, decoded, _, _ = detector.detectAndDecodeMulti(candidate)
-            if ok:
-                for item in decoded:
-                    amount = parse_invoice_qr_amount(item or "")
-                    if amount is not None:
-                        return amount
+        for candidate in crops:
+            text, _, _ = detector.detectAndDecode(candidate)
+            amount = parse_invoice_qr_amount(text or "")
+            if amount is not None:
+                return amount
+            if hasattr(detector, "detectAndDecodeMulti"):
+                ok, decoded, _, _ = detector.detectAndDecodeMulti(candidate)
+                if ok:
+                    for item in decoded:
+                        amount = parse_invoice_qr_amount(item or "")
+                        if amount is not None:
+                            return amount
+    except Exception:
+        app.logger.exception("Invoice QR decode failed")
     return None
 
 
 def extract_pdf_qr_amount(reader: PdfReader) -> float | None:
-    for page in reader.pages:
-        for image in getattr(page, "images", []):
-            amount = decode_qr_amount_from_image_bytes(image.data)
-            if amount is not None:
-                return amount
+    try:
+        for page in reader.pages:
+            for image in getattr(page, "images", []):
+                amount = decode_qr_amount_from_image_bytes(image.data)
+                if amount is not None:
+                    return amount
+    except Exception:
+        app.logger.exception("Invoice PDF image extraction failed")
     return None
 
 
@@ -554,8 +560,9 @@ def handle_http(error: HTTPException) -> tuple[Response, int]:
 
 @app.errorhandler(Exception)
 def handle_unexpected(error: Exception) -> tuple[Response, int]:
-    app.logger.exception("Unhandled request error")
-    return jsonify({"error": "服务器处理失败，请稍后重试或联系财务"}), 500
+    error_id = uuid.uuid4().hex[:8]
+    app.logger.exception("Unhandled request error %s", error_id)
+    return jsonify({"error": f"服务器处理失败，请稍后重试或联系财务（错误编号：{error_id}）"}), 500
 
 
 @app.route("/")
