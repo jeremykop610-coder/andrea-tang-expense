@@ -455,6 +455,32 @@ function uploadHint(receiptType) {
   return "支持 PDF/JPG/PNG/WEBP";
 }
 
+function renderLineInvoiceStatus(node) {
+  const receiptType = node.querySelector(".line-receipt").value;
+  const status = node.querySelector(".invoice-status");
+  if (receiptType === "无票据") {
+    status.textContent = "请填写无票据说明";
+    return;
+  }
+  if (!node.dataset.attachmentPath) {
+    status.textContent = uploadHint(receiptType);
+    return;
+  }
+  if (receiptType !== "数电发票") {
+    status.textContent = `已上传：${node.dataset.attachmentName}`;
+    return;
+  }
+  if (node.dataset.invoiceAmount === "") {
+    status.textContent = "未识别，请人工核对";
+    return;
+  }
+  const amount = Number(node.querySelector(".line-amount").value || 0);
+  const difference = Number(node.dataset.invoiceAmount) - amount;
+  status.textContent = difference
+    ? `含税金额 ${formatMoney(node.dataset.invoiceAmount)}；差额 ${formatMoney(difference)}`
+    : `含税金额 ${formatMoney(node.dataset.invoiceAmount)}`;
+}
+
 function addLine(defaults = {}) {
   const node = els.lineTemplate.content.firstElementChild.cloneNode(true);
   fillCategorySelect(node.querySelector(".line-type"));
@@ -479,15 +505,16 @@ function addLine(defaults = {}) {
     attachmentInput.accept = digital ? "application/pdf,.pdf" : "application/pdf,.pdf,image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp";
     noReceiptField.hidden = !noReceipt;
     noReceiptInput.required = noReceipt;
-    if (noReceipt) {
-      node.querySelector(".invoice-status").textContent = "请填写无票据说明";
-    } else if (node.dataset.attachmentName) {
-      node.querySelector(".invoice-status").textContent = `已保留：${node.dataset.attachmentName}`;
-    } else {
-      node.querySelector(".invoice-status").textContent = uploadHint(receiptSelect.value);
-    }
+    renderLineInvoiceStatus(node);
   };
-  receiptSelect.addEventListener("change", syncAttachmentAccept);
+  receiptSelect.addEventListener("change", () => {
+    node.dataset.invoiceAmount = "";
+    node.dataset.attachmentName = "";
+    node.dataset.attachmentPath = "";
+    node._invoiceInspection = null;
+    attachmentInput.value = "";
+    syncAttachmentAccept();
+  });
   syncAttachmentAccept();
   node.querySelector(".remove-line").addEventListener("click", () => {
     if (els.lineItems.children.length === 1) {
@@ -497,20 +524,23 @@ function addLine(defaults = {}) {
     node.remove();
   });
   attachmentInput.addEventListener("change", () => {
-    const status = node.querySelector(".invoice-status");
     const file = attachmentInput.files[0];
     node.dataset.invoiceAmount = "";
     node.dataset.attachmentName = "";
     node.dataset.attachmentPath = "";
-    status.textContent = file ? file.name : uploadHint(receiptSelect.value);
-  });
-  node.querySelector(".line-amount").addEventListener("input", () => {
-    if (receiptSelect.value === "数电发票" && node.dataset.invoiceAmount !== "") {
-      const amount = Number(node.querySelector(".line-amount").value || 0);
-      const diff = Number(node.dataset.invoiceAmount) - amount;
-      node.querySelector(".invoice-status").textContent = `含税金额 ${formatMoney(node.dataset.invoiceAmount)}；差额 ${formatMoney(diff)}`;
+    node._invoiceInspection = null;
+    if (!file) {
+      renderLineInvoiceStatus(node);
+      return;
     }
+    node._invoiceInspection = inspectLineInvoice(node).catch((error) => {
+      node._invoiceInspection = null;
+      node.querySelector(".invoice-status").textContent = `上传失败：${error.message}`;
+      throw error;
+    });
+    node._invoiceInspection.catch(() => {});
   });
+  node.querySelector(".line-amount").addEventListener("input", () => renderLineInvoiceStatus(node));
   els.lineItems.appendChild(node);
 }
 
@@ -521,7 +551,7 @@ async function inspectLineInvoice(node) {
   if (receiptType === "无票据") {
     return { attachment_name: "", attachment_path: "", invoice_amount: null };
   }
-  if (!file && node.dataset.attachmentPath) {
+  if (node.dataset.attachmentPath) {
     return {
       attachment_name: node.dataset.attachmentName,
       attachment_path: node.dataset.attachmentPath,
@@ -546,7 +576,7 @@ async function inspectLineInvoice(node) {
   node.dataset.attachmentName = data.attachment_name;
   node.dataset.attachmentPath = data.attachment_path;
   if (receiptType === "数电发票") {
-    status.textContent = data.invoice_amount == null ? "未识别，请人工核对" : `含税金额 ${formatMoney(data.invoice_amount)}`;
+    renderLineInvoiceStatus(node);
   } else {
     status.textContent = `已上传：${data.attachment_name}`;
   }
@@ -559,6 +589,7 @@ async function readLineItemsWithInvoices() {
   const mismatches = [];
 
   for (const [index, node] of nodes.entries()) {
+    if (node._invoiceInspection) await node._invoiceInspection;
     const invoice = await inspectLineInvoice(node);
     const amount = Number(node.querySelector(".line-amount").value);
     const purpose = node.querySelector(".line-purpose").value.trim();
