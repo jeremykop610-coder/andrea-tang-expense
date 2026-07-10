@@ -148,6 +148,13 @@ def extract_pdf_amount(path: Path) -> float | None:
         match = re.search(pattern, text, flags=re.IGNORECASE)
         if match:
             return round(float(match.group(1).replace(",", "")), 2)
+
+    currency_amounts = [
+        float(match.replace(",", ""))
+        for match in re.findall(r"[¥￥]\s*([0-9][0-9,]*\.?[0-9]{0,2})", text)
+    ]
+    if currency_amounts:
+        return round(max(currency_amounts), 2)
     return None
 
 
